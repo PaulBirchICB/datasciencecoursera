@@ -1,0 +1,284 @@
+---
+title: "Reproducible Research: Course Project 1"
+author: "Paul Birch"
+output: html_document
+---
+
+
+
+# Loading and Preprocessing the Data
+
+
+``` r
+setwd("C:/Users/paulbi/OneDrive - NHS/Documents/00_Central_Resources/Learning/JHU Data Science/datasciencecoursera/Course_Project_1_RR")
+
+activity <- read.csv("data/activity.csv")
+activity$date <- as.Date(activity$date)
+
+str(activity)
+```
+
+```
+## 'data.frame':	17568 obs. of  3 variables:
+##  $ steps   : int  NA NA NA NA NA NA NA NA NA NA ...
+##  $ date    : Date, format: "2012-10-01" "2012-10-01" "2012-10-01" "2012-10-01" ...
+##  $ interval: int  0 5 10 15 20 25 30 35 40 45 ...
+```
+
+# Total Number of Steps Taken Per Day
+
+
+``` r
+total_steps_per_day <- aggregate(
+  steps ~ date,
+  data = activity,
+  sum,
+  na.rm = TRUE
+)
+```
+
+## Histogram
+
+
+``` r
+hist(
+  total_steps_per_day$steps,
+  main = "Total Steps Per Day",
+  xlab = "Steps",
+  col = "steelblue",
+  breaks = 20
+)
+```
+
+![plot of chunk unnamed-chunk-3](figure/unnamed-chunk-3-1.png)
+
+## Mean and Median
+
+
+``` r
+mean_steps <- mean(total_steps_per_day$steps)
+median_steps <- median(total_steps_per_day$steps)
+
+mean_steps
+```
+
+```
+## [1] 10766.19
+```
+
+``` r
+median_steps
+```
+
+```
+## [1] 10765
+```
+
+# Average Daily Activity Pattern
+
+
+``` r
+avg_steps_interval <- aggregate(
+  steps ~ interval,
+  data = activity,
+  FUN = mean,
+  na.rm = TRUE
+)
+```
+
+## Convert intervals to HH:MM time-of-day labels
+
+
+``` r
+convert_to_time <- function(interval) {
+  sprintf("%02d:%02d", interval %/% 100, interval %% 100)
+}
+
+avg_steps_interval$time <- convert_to_time(avg_steps_interval$interval)
+```
+
+## Time-Series Plot
+
+
+``` r
+plot(
+  avg_steps_interval$steps,
+  type = "l",
+  col = "blue",
+  xaxt = "n",
+  main = "Average Steps per 5-Minute Interval",
+  xlab = "Time of Day",
+  ylab = "Average Steps"
+)
+
+time_ticks <- seq(1, nrow(avg_steps_interval), by = 24)
+axis(1, at = time_ticks, labels = avg_steps_interval$time[time_ticks], las = 2)
+```
+
+![plot of chunk unnamed-chunk-7](figure/unnamed-chunk-7-1.png)
+
+## Interval with Maximum Average Steps
+
+
+``` r
+max_interval <- avg_steps_interval[which.max(avg_steps_interval$steps), ]
+max_interval
+```
+
+```
+##     interval    steps  time
+## 104      835 206.1698 08:35
+```
+
+# Imputing Missing Values
+
+
+``` r
+total_missing <- sum(is.na(activity$steps))
+total_missing
+```
+
+```
+## [1] 2304
+```
+
+## Impute missing values with interval means
+
+
+``` r
+activity_imputed <- activity
+
+for (i in 1:nrow(activity_imputed)) {
+  if (is.na(activity_imputed$steps[i])) {
+    iv <- activity_imputed$interval[i]
+    mean_value <- avg_steps_interval$steps[avg_steps_interval$interval == iv]
+    activity_imputed$steps[i] <- mean_value
+  }
+}
+```
+
+## Total Steps Per Day After Imputation
+
+
+``` r
+total_steps_per_day_imputed <- aggregate(
+  steps ~ date,
+  data = activity_imputed,
+  sum
+)
+```
+
+## Histogram After Imputation
+
+
+``` r
+hist(
+  total_steps_per_day_imputed$steps,
+  main = "Total Steps Per Day (Imputed Data)",
+  xlab = "Steps",
+  col = "darkgreen",
+  breaks = 20
+)
+```
+
+![plot of chunk unnamed-chunk-12](figure/unnamed-chunk-12-1.png)
+
+## Mean and Median After Imputation
+
+
+``` r
+mean_steps_imputed <- mean(total_steps_per_day_imputed$steps)
+median_steps_imputed <- median(total_steps_per_day_imputed$steps)
+
+mean_steps_imputed
+```
+
+```
+## [1] 10766.19
+```
+
+``` r
+median_steps_imputed
+```
+
+```
+## [1] 10766.19
+```
+
+### Note on the Equality of Mean and Median After Imputation
+
+During analysis, the equality of the mean and median total daily steps seemed wrong as it seemed appeared unlikely that the two measures of central tendency would be identical. However, this result is correct and arises from a particular characteristic of the dataset and the imputation method used.
+
+The missing values in the dataset occur in entire days where every 5‑minute interval is recorded as `NA`. When these missing values are replaced using the required strategy — substituting the *mean steps for that interval* — every interval on those affected days receives the same imputed value. As a result, each of these completely-missing days ends up with an identical total number of steps after imputation.
+
+Therefore, although the equality of the mean and median may appear unusual at first glance, it is a mathematically valid and expected outcome given the imputation method and the structure of the missing data.
+
+
+
+# Weekday vs Weekend Activity Patterns
+
+
+``` r
+activity_imputed$day_type <- ifelse(
+  weekdays(activity_imputed$date) %in% c("Saturday", "Sunday"),
+  "weekend",
+  "weekday"
+)
+
+activity_imputed$day_type <- factor(activity_imputed$day_type,
+                                    levels = c("weekday", "weekend"))
+```
+
+## Compute averages by interval and day type
+
+
+``` r
+avg_steps_interval_daytype <- aggregate(
+  steps ~ interval + day_type,
+  data = activity_imputed,
+  FUN = mean
+)
+
+avg_steps_interval_daytype$time <- convert_to_time(avg_steps_interval_daytype$interval)
+```
+
+## Panel Plot (Weekday vs Weekend)
+
+
+``` r
+par(mfrow = c(2, 1), mar = c(5, 5, 4, 2))
+
+weekday_data <- subset(avg_steps_interval_daytype, day_type == "weekday")
+plot(
+  weekday_data$steps,
+  type = "l",
+  col = "blue",
+  xaxt = "n",
+  main = "Average Steps per Interval: Weekdays",
+  xlab = "Time of Day",
+  ylab = "Average Steps"
+)
+axis(1, at = time_ticks, labels = weekday_data$time[time_ticks], las = 2)
+
+weekend_data <- subset(avg_steps_interval_daytype, day_type == "weekend")
+plot(
+  weekend_data$steps,
+  type = "l",
+  col = "darkorange",
+  xaxt = "n",
+  main = "Average Steps per Interval: Weekends",
+  xlab = "Time of Day",
+  ylab = "Average Steps"
+)
+axis(1, at = time_ticks, labels = weekend_data$time[time_ticks], las = 2)
+```
+
+![plot of chunk unnamed-chunk-16](figure/unnamed-chunk-16-1.png)
+
+``` r
+par(mfrow = c(1,1))
+```
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+Yes, there are clear differences between weekday and weekend activity patterns. Weekdays show an early morning peak in steps, while weekends have a more gradual and evenly spread pattern throughout the day
